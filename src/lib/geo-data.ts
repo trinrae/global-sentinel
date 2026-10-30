@@ -331,7 +331,7 @@ export function resourcesFor(id: string | null, all: GeoLoc[], extra: Resource[]
   const pool = [...STATIC_RESOURCES, ...extra];
   if (!id) return dedupe(pool.filter((r) => r.scope === "GLOBAL"));
   const chain = lineage(id, all);
-  const country = chain.length ? countryOf(chain[0], all) : undefined;
+  const country = chain[0] ? countryOf(chain[0], all) : undefined;
   const ids = new Set(chain.map((l) => l.id));
   const res: Resource[] = [];
   for (const l of chain) {

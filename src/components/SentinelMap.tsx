@@ -130,11 +130,11 @@ const SentinelMap = forwardRef<MapHandle, Props>(function SentinelMap(p, ref) {
 function escape(s: string) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
-function incGeo(list: Incident[]): GeoJSON.FeatureCollection {
+function incGeo(list: Incident[]): import("geojson").FeatureCollection {
   return { type: "FeatureCollection", features: list.map((i) => ({ type: "Feature", geometry: { type: "Point", coordinates: [i.lng, i.lat] },
     properties: { id: i.id, title: i.title, source: i.source, severity: i.severity, verified: i.verified } })) };
 }
-function locGeo(list: GeoLoc[], sel: string | null): GeoJSON.FeatureCollection {
+function locGeo(list: GeoLoc[], sel: string | null): import("geojson").FeatureCollection {
   return { type: "FeatureCollection", features: list.map((l) => ({ type: "Feature", geometry: { type: "Point", coordinates: [l.lng, l.lat] },
     properties: { id: l.id, name: l.name, sel: l.id === sel, priority: !!l.priority || l.type === "country", watch: !!l.watch } })) };
 }
