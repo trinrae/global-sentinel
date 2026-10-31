@@ -1,4 +1,5 @@
 // Geographic hierarchy + resource directory. Browser-safe, no side effects.
+import { WICHITA_RESOURCES } from "./wichita-resources";
 export type Region = "AMER" | "EMEA" | "APAC";
 export type LocType = "country" | "admin1" | "admin2" | "city";
 
@@ -168,6 +169,18 @@ export interface Resource {
   reliability: Reliability;
   lang?: string;
   note?: string;
+  organization?: string;
+  coverage?: string;
+  bestUsedFor?: string;
+  sourceClass?: "Official Primary Source" | "Independently Rated News Source" | "Unrated News Source" | "Unverified Resource" | "External Search Shortcut";
+  verificationStatus?: "Verified" | "Needs Verification";
+  lastVerified?: string;
+  evidenceUrl?: string;
+  ratingEvidenceUrl?: string;
+  phone?: { number: string; label: string; evidenceUrl: string; verified: boolean };
+  socialAccounts?: { platform: string; url: string; evidenceUrl: string; verified: boolean }[];
+  section?: "Police & Public Safety" | "Fire & Rescue" | "Emergency Management" | "Weather & Natural Hazards" | "Local News" | "Social Intelligence" | "Transportation";
+  accessMode?: "Static resource" | "External account" | "External Search Shortcut" | "Live feed" | "External incident map";
 }
 
 const enc = encodeURIComponent;
@@ -275,7 +288,7 @@ export function generatedResources(loc: GeoLoc, country?: Country): Resource[] {
     },
     {
       id: `gen-x-${loc.id}`,
-      name: `X live search – ${loc.name}`,
+      name: `X external search – ${loc.name}`,
       url: `https://x.com/search?q=${enc(q + " (police OR fire OR explosion OR protest OR flood)")}&f=live`,
       scope: loc.id,
       categories: ["Social Media"],
@@ -324,7 +337,10 @@ export function generatedResources(loc: GeoLoc, country?: Country): Resource[] {
   return out;
 }
 
-export const STATIC_RESOURCES: Resource[] = [...GLOBAL, ...SPECIFIC];
+export const STATIC_RESOURCES: Resource[] = [
+  ...WICHITA_RESOURCES,
+  ...[...GLOBAL, ...SPECIFIC].filter((r) => !WICHITA_RESOURCES.some((w) => w.id === r.id || w.url === r.url)),
+];
 
 /** Resources for the location and all ancestors + global, deduped by url. */
 export function resourcesFor(id: string | null, all: GeoLoc[], extra: Resource[] = []): Resource[] {
