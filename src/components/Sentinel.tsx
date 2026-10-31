@@ -1,4 +1,5 @@
 import { ResourceDetails, SourceBadge, WichitaIntelligence } from "./ResourceDetails";
+import { groupByCategory } from "@/lib/resource-verification";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -409,7 +410,7 @@ const td = "px-3 py-1.5 align-top";
 
 function DirectoryTable({ resources, allLocs }: { resources: Resource[]; allLocs: GeoLoc[] }) {
   const [f, setF] = useState("");
-  const list = resources.filter((r) => (r.name + r.categories.join(" ")).toLowerCase().includes(f.toLowerCase()));
+  const list = groupByCategory(resources).filter((r) => (r.name + (r.organization ?? "") + (r.coverage ?? "") + r.categories.join(" ")).toLowerCase().includes(f.toLowerCase()));
   return (
     <div>
       <div className="p-2"><input value={f} onChange={(e) => setF(e.target.value)} placeholder="Filter resources…" className="w-72 rounded border border-input bg-background px-2 py-1 text-xs outline-none" /></div>

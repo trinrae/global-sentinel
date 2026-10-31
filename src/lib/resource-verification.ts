@@ -1,4 +1,4 @@
-import type { Resource } from "./geo-data";
+import { CATEGORIES, type Resource } from "./geo-data";
 
 export function sourceClassification(r: Resource): NonNullable<Resource["sourceClass"]> {
   if (r.accessMode === "External Search Shortcut" || /^(gen-gn-|gen-x-|gen-osm-)/.test(r.id)) return "External Search Shortcut";
@@ -30,4 +30,9 @@ export function sectionResources(section: typeof INTEL_SECTIONS[number], resourc
   if (section === "Social Intelligence") return local.filter((r) => r.categories.includes("Social Media") || r.socialAccounts?.length);
   if (section === "Local News") return local.filter((r) => r.section === section || r.categories.includes("News – Local"));
   return local.filter((r) => r.section === section);
+}
+
+/** Stable within-category ordering preserves the most-specific-first inherited input. */
+export function groupByCategory(resources: Resource[]) {
+  return [...resources].sort((a, b) => CATEGORIES.indexOf(a.categories[0] ?? "Translation & Tools") - CATEGORIES.indexOf(b.categories[0] ?? "Translation & Tools"));
 }
