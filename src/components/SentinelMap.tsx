@@ -39,7 +39,8 @@ const SentinelMap = forwardRef<MapHandle, Props>(function SentinelMap(p, ref) {
   }));
 
   const addLayers = () => {
-    const m = map.current!;
+    const m = map.current;
+    if (!m) return;
     const cur = props.current;
     m.addSource("incidents", { type: "geojson", data: incGeo(cur.incidents), cluster: true, clusterRadius: 40, clusterMaxZoom: 7 });
     m.addLayer({ id: "inc-cluster", type: "circle", source: "incidents", filter: ["has", "point_count"],
@@ -71,8 +72,9 @@ const SentinelMap = forwardRef<MapHandle, Props>(function SentinelMap(p, ref) {
   };
 
   useEffect(() => {
+    if (!el.current) return;
     const m = new maplibregl.Map({
-      container: el.current!,
+      container: el.current,
       style: `https://tiles.openfreemap.org/styles/${p.styleName}`,
       center: [10, 25],
       zoom: 1.6,
@@ -84,22 +86,23 @@ const SentinelMap = forwardRef<MapHandle, Props>(function SentinelMap(p, ref) {
     m.addControl(new maplibregl.ScaleControl(), "bottom-left");
     m.on("style.load", addLayers);
     m.on("click", "loc-point", (e) => {
-      const id = e.features?.[0]?.properties?.id;
+      const id = e.features?.[0]?.properties?.["id"];
       if (id) props.current.onSelectLocation(id);
     });
     m.on("click", "inc-point", (e) => {
       const f = e.features?.[0];
       if (!f) return;
-      props.current.onSelectIncident(f.properties.id);
+      props.current.onSelectIncident(f.properties["id"]);
       new maplibregl.Popup({ closeButton: false })
         .setLngLat((f.geometry as any).coordinates)
-        .setHTML(`<strong>${escape(f.properties.title)}</strong><br/><span>${escape(f.properties.source)} · ${f.properties.verified ? "Verified" : "Unverified"}</span>`)
+        .setHTML(`<strong>${escape(f.properties["title"])}</strong><br/><span>${escape(f.properties["source"])} · ${f.properties["verified"] ? "Verified" : "Unverified"}</span>`)
         .addTo(m);
     });
     m.on("click", "inc-cluster", async (e) => {
-      const f = e.features![0];
+      const f = e.features?.[0];
+      if (!f) return;
       const src = m.getSource("incidents") as maplibregl.GeoJSONSource;
-      const z = await src.getClusterExpansionZoom(f.properties.cluster_id);
+      const z = await src.getClusterExpansionZoom(f.properties["cluster_id"]);
       m.easeTo({ center: (f.geometry as any).coordinates, zoom: z });
     });
     for (const l of ["loc-point", "inc-point", "inc-cluster"]) {
@@ -128,7 +131,7 @@ const SentinelMap = forwardRef<MapHandle, Props>(function SentinelMap(p, ref) {
 });
 
 function escape(s: string) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 }
 function incGeo(list: Incident[]): import("geojson").FeatureCollection {
   return { type: "FeatureCollection", features: list.map((i) => ({ type: "Feature", geometry: { type: "Point", coordinates: [i.lng, i.lat] },

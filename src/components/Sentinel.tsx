@@ -1,3 +1,5 @@
+import { ResourceDetails, SourceBadge, WichitaIntelligence } from "./ResourceDetails";
+import { groupByCategory } from "@/lib/resource-verification";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ClientOnly, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -43,7 +45,7 @@ export function Sentinel({ tab: initialTab, live = false }: { tab: Tab; live?: b
   const [showLoc, setShowLoc] = useState(true);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
-  const [bottomOpen, setBottomOpen] = useState(initialTab !== "directory" || true);
+  const [bottomOpen, setBottomOpen] = useState<boolean>(true);
   const [watch, setWatch] = useStored<GeoLoc[]>("gs.watch", []);
   const [custom, setCustom] = useStored<Resource[]>("gs.customResources", []);
 
@@ -76,6 +78,8 @@ export function Sentinel({ tab: initialTab, live = false }: { tab: Tab; live?: b
   };
 
   const addFromSearch = (h: GeoHit) => {
+    const known = allLocs.find((l) => l.name.toLowerCase() === h.name.toLowerCase() && Math.abs(l.lat - h.lat) < 0.3 && Math.abs(l.lng - h.lng) < 0.3);
+    if (known) return select(known.id);
     const existingCountry = COUNTRIES.find((c) => c.code === h.countryCode);
     const isCountry = h.type === "country";
     if (isCountry && existingCountry) return select(existingCountry.code);
@@ -84,7 +88,7 @@ export function Sentinel({ tab: initialTab, live = false }: { tab: Tab; live?: b
       const reg: Region = existingCountry?.region ?? (h.lng < -30 ? "AMER" : h.lng > 60 ? "APAC" : "EMEA");
       const loc: GeoLoc = {
         id, name: h.name, type: isCountry ? "country" : "city",
-        parent: !isCountry && existingCountry ? existingCountry.code : undefined,
+        ...(!isCountry && existingCountry ? { parent: existingCountry.code } : {}),
         lat: h.lat, lng: h.lng, zoom: isCountry ? 5 : 10.5, region: reg, watch: true, label: h.type,
       };
       setWatch([...watch, loc]);
@@ -233,13 +237,16 @@ function LeftPanel(p: {
   const [hits, setHits] = useState<GeoHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const local = q.length > 1 ? p.allLocs.filter((l) => l.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8) : [];
+  const local = q.length > 1 ? p.allLocs.filter((l) => {
+    const searchLabel = lineage(l.id, p.allLocs).map((x) => x.name).join(", ").toLowerCase();
+    return q.toLowerCase().split(/[\s,]+/).filter(Boolean).every((word) => searchLabel.includes(word));
+  }).slice(0, 8) : [];
 
   useEffect(() => {
     if (q.length < 3) { setHits([]); return; }
     const t = setTimeout(async () => {
       setSearching(true);
-      try { setHits(await searchPlaces(q)); } finally { setSearching(false); }
+      try { setHits(await searchPlaces(q)); } catch { setHits([]); } finally { setSearching(false); }
     }, 450);
     return () => clearTimeout(t);
   }, [q]);
@@ -318,7 +325,7 @@ function LeftPanel(p: {
 }
 
 function IntelPanel({ loc, chain, country, resources, nearby, onSelect }: {
-  loc: GeoLoc | null; chain: GeoLoc[]; country?: (typeof COUNTRIES)[number]; resources: Resource[]; nearby: Incident[]; onSelect: (id: string) => void;
+  loc: GeoLoc | null; chain: GeoLoc[]; country: (typeof COUNTRIES)[number] | undefined; resources: Resource[]; nearby: Incident[]; onSelect: (id: string) => void;
 }) {
   if (!loc)
     return (
@@ -362,11 +369,11 @@ function IntelPanel({ loc, chain, country, resources, nearby, onSelect }: {
         </div>
       )}
       <div>
-        <SectionTitle>Incidents nearby · {nearby.length}</SectionTitle>
+        <SectionTitle>Live feeds · USGS / NASA EONET · {nearby.length}</SectionTitle>
         {nearby.slice(0, 5).map((i) => <IncidentRow key={i.id} i={i} loc={loc} />)}
-        {nearby.length === 0 && <p className="text-muted-foreground">No live feed incidents within range.</p>}
+        {nearby.length === 0 && <p className="text-muted-foreground">No incidents reported by USGS / NASA EONET within range; local police and fire coverage is not included.</p>}
       </div>
-      {byLevel.map(({ l, items }) => items.length > 0 && (
+      {loc.id === "US-KS-WICHITA" ? <WichitaIntelligence resources={resources} /> : byLevel.map(({ l, items }) => items.length > 0 && (
         <div key={l.id}>
           <SectionTitle>{l.name} · {l.label ?? l.type}</SectionTitle>
           {items.map((r) => <ResourceLink key={r.id} r={r} />)}
@@ -377,12 +384,7 @@ function IntelPanel({ loc, chain, country, resources, nearby, onSelect }: {
 }
 
 function ResourceLink({ r }: { r: Resource }) {
-  return (
-    <a href={r.url} target="_blank" rel="noreferrer" className="mb-1 flex items-start justify-between gap-2 rounded px-1.5 py-1 hover:bg-accent">
-      <span className="text-foreground">{r.name}{r.note && <span className="block text-[10px] text-muted-foreground">{r.note}</span>}</span>
-      <RelBadge r={r.reliability} />
-    </a>
-  );
+  return <ResourceDetails resource={r} />;
 }
 
 function IncidentRow({ i, loc }: { i: Incident; loc?: GeoLoc | null }) {
@@ -408,19 +410,19 @@ const td = "px-3 py-1.5 align-top";
 
 function DirectoryTable({ resources, allLocs }: { resources: Resource[]; allLocs: GeoLoc[] }) {
   const [f, setF] = useState("");
-  const list = resources.filter((r) => (r.name + r.categories.join(" ")).toLowerCase().includes(f.toLowerCase()));
+  const list = groupByCategory(resources).filter((r) => (r.name + (r.organization ?? "") + (r.coverage ?? "") + r.categories.join(" ")).toLowerCase().includes(f.toLowerCase()));
   return (
     <div>
       <div className="p-2"><input value={f} onChange={(e) => setF(e.target.value)} placeholder="Filter resources…" className="w-72 rounded border border-input bg-background px-2 py-1 text-xs outline-none" /></div>
       <table className="w-full text-xs">
-        <thead><tr><th className={th}>Resource</th><th className={th}>Scope</th><th className={th}>Categories</th><th className={th}>Reliability</th></tr></thead>
+        <thead><tr><th className={th}>Resource</th><th className={th}>Scope</th><th className={th}>Categories</th><th className={th}>Source classification</th></tr></thead>
         <tbody>
           {list.map((r) => (
             <tr key={r.id} className="border-t border-border hover:bg-accent/50">
-              <td className={td}><a href={r.url} target="_blank" rel="noreferrer" className="text-info hover:underline">{r.name}</a>{r.lang && <span className="ml-1 font-mono text-[10px] text-muted-foreground">[{r.lang}]</span>}</td>
+              <td className={td}><ResourceDetails resource={r} /></td>
               <td className={td}>{r.scope === "GLOBAL" ? "Global" : allLocs.find((l) => l.id === r.scope)?.name ?? r.scope}</td>
               <td className={`${td} text-muted-foreground`}>{r.categories.join(", ")}</td>
-              <td className={td}><RelBadge r={r.reliability} /></td>
+              <td className={td}><SourceBadge resource={r} /></td>
             </tr>
           ))}
         </tbody>
@@ -454,7 +456,7 @@ function IncidentTable({ list, loading, errored, onGo, selLoc }: { list: Inciden
   );
 }
 
-function NewsSocial({ loc, chain, country, resources }: { loc: GeoLoc | null; chain: GeoLoc[]; country?: (typeof COUNTRIES)[number]; resources: Resource[] }) {
+function NewsSocial({ loc, chain, country, resources }: { loc: GeoLoc | null; chain: GeoLoc[]; country: (typeof COUNTRIES)[number] | undefined; resources: Resource[] }) {
   const [kw, setKw] = useState("shooting OR explosion OR protest OR fire OR flood OR strike");
   const place = loc ? chain.slice(0, 2).map((c) => c.name).join(" ") : "";
   const q = encodeURIComponent(`${place} ${kw}`.trim());
@@ -474,14 +476,14 @@ function NewsSocial({ loc, chain, country, resources }: { loc: GeoLoc | null; ch
       <div>
         <SectionTitle>Query builder · {loc ? chain.map((c) => c.name).join(" › ") : "Global"}</SectionTitle>
         <input value={kw} onChange={(e) => setKw(e.target.value)} className="mb-2 w-full rounded border border-input bg-background px-2 py-1 font-mono text-[11px] outline-none" />
-        {searches.map((s) => <a key={s.name} href={s.url} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-accent"><span className="text-info">{s.name}</span><RelBadge r="unverified" /></a>)}
+        {searches.map((s) => <a key={s.name} href={s.url} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-accent"><span className="text-info">{s.name}</span><span className="text-[10px] text-caution">External Search Shortcut</span></a>)}
         {lang !== "en" && (
           <a href={`https://translate.google.com/?sl=en&tl=${lang}&text=${kwLocal}&op=translate`} target="_blank" rel="noreferrer" className="mt-2 block text-info hover:underline">Translate keywords EN → {lang.toUpperCase()} for local-language searching</a>
         )}
         <p className="mt-2 text-[10px] text-caution">Social and aggregated results are unverified until corroborated by an official or verified source.</p>
       </div>
       <div>
-        <SectionTitle>Curated news & social sources in scope</SectionTitle>
+        <SectionTitle>News outlets & external social sources in scope</SectionTitle>
         {resources.filter((r) => r.categories.some((c) => c.startsWith("News") || c === "Social Media")).map((r) => <ResourceLink key={r.id} r={r} />)}
       </div>
     </div>
@@ -528,7 +530,7 @@ function Admin({ custom, setCustom, allLocs }: { custom: Resource[]; setCustom: 
         {custom.map((r) => (
           <div key={r.id} className="flex items-center gap-3 border-t border-border py-1.5">
             <a href={r.url} target="_blank" rel="noreferrer" className="text-info">{r.name}</a>
-            <span className="text-muted-foreground">{r.scope} · {r.categories.join(", ")}</span><RelBadge r={r.reliability} />
+            <span className="text-muted-foreground">{r.scope} · {r.categories.join(", ")}</span><SourceBadge resource={r} />
             <button onClick={() => setCustom(custom.filter((x) => x.id !== r.id))} className="ml-auto text-critical hover:underline">Delete</button>
           </div>
         ))}
