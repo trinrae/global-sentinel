@@ -47,4 +47,27 @@ describe("geographic hierarchy", () => {
     expect(ids).toContain("us-fema");
     expect(ids).toContain("g-usgs");
   });
+
+  it("Wichita exposes the documented police Case Desk number without treating it as dispatch", () => {
+    const police = resourcesFor("US-KS-WICHITA", BASE_LOCATIONS).find((r) => r.id === "ks-wichita-pd");
+    expect(police).toBeDefined();
+    if (!police) throw new Error("Wichita police missing");
+    expect(sourceClassification(police)).toBe("Official Primary Source");
+    expect(operationalPhone(police)?.number).toBe("316-268-4221");
+    expect(operationalPhone(police)?.evidenceUrl).toBe("https://www.wichita.gov/844/How-to-Report");
+  });
+
+  it("Wichita fire includes its documented administration contact", () => {
+    const fire = resourcesFor("US-KS-WICHITA", BASE_LOCATIONS).find((r) => r.id === "ks-wichita-fire");
+    if (!fire) throw new Error("Wichita fire missing");
+    expect(operationalPhone(fire)?.number).toBe("316-268-4510");
+    expect(sectionResources("Fire & Rescue", [fire])).toEqual([fire]);
+  });
+
+  it("NWS Wichita retains its documented office phone and static access classification", () => {
+    const weather = resourcesFor("US-KS-WICHITA", BASE_LOCATIONS).find((r) => r.id === "ks-ict-nws");
+    if (!weather) throw new Error("Wichita NWS missing");
+    expect(operationalPhone(weather)?.number).toBe("316-942-3102");
+    expect(weather.accessMode).toBe("Static resource");
+  });
 });
